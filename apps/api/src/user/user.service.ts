@@ -21,20 +21,26 @@ export class UserService {
         try {
             this.logger.log(`Starting resume processing for user ${userId}: ${originalName}`);
 
-            let textContent = '';
+            let textContent: string = '';
             try {
-                // @ts-ignore
-                let parsePdf: any = rawPdfParser;
-                if (typeof rawPdfParser === 'object' && typeof rawPdfParser.PDFParse === 'function') {
-                    parsePdf = rawPdfParser.PDFParse;
-                } else if (rawPdfParser && typeof rawPdfParser.default === 'function') {
-                    parsePdf = rawPdfParser.default;
+                // Determine the parser based on the version (v1 is function, v2 is Class)
+                if (typeof rawPdfParser.PDFParse === 'function') {
+                    this.logger.debug('Using pdf-parse v2 class structure');
+                    // @ts-ignore
+                    const parser = new rawPdfParser.PDFParse({ data: file });
+                    const result = await parser.getText();
+                    textContent = result.text;
+                    // Free memory as recommended in docs
+                    await parser.destroy();
+                } else {
+                    this.logger.debug('Using pdf-parse v1 function structure');
+                    const pdfFunction = rawPdfParser.default || rawPdfParser;
+                    const result = await pdfFunction(file);
+                    textContent = result.text;
                 }
-                const data = await parsePdf(file);
-                textContent = data.text;
             } catch (pdfError) {
-                this.logger.error(`PDF Extraction failed: ${pdfError.message}`);
-                throw new Error('Failed to extract text from PDF. Please ensure the file is not corrupted.');
+                this.logger.error(`PDF Extraction failed with error: ${pdfError.message}`);
+                throw new Error(`Failed to extract text from PDF: ${pdfError.message}. Please ensure the file is not corrupted.`);
             }
 
             if (!textContent || textContent.trim().length < 50) {
