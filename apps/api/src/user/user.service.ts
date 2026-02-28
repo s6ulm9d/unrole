@@ -19,26 +19,36 @@ export class UserService {
     async uploadResume(userId: string, file: Buffer, originalName: string) {
         try {
             this.logger.log(`Starting resume processing for user ${userId}: ${originalName}`);
-            // @ts-ignore
-            const data = await pdfParser(file);
-            const textContent = data.text;
 
-            if (!textContent || textContent.trim().length === 0) {
-                throw new Error('PDF content is empty or could not be extracted');
+            let textContent = '';
+            try {
+                // @ts-ignore
+                const data = await pdfParser(file);
+                textContent = data.text;
+            } catch (pdfError) {
+                this.logger.error(`PDF Extraction failed: ${pdfError.message}`);
+                throw new Error('Failed to extract text from PDF. Please ensure the file is not corrupted.');
             }
 
-            this.logger.log(`Extracted ${textContent.length} characters from PDF.`);
-            this.logger.log(`Text preview: ${textContent.substring(0, 200).replace(/\n/g, ' ')}...`);
-            this.logger.log(`Sending to AI...`);
-            const parsedJson = await this.ai.parseResume(textContent);
+            if (!textContent || textContent.trim().length < 50) {
+                this.logger.warn(`Extracted text is too short or empty: ${textContent?.length} chars`);
+                throw new Error('Resume content is too short or could not be read. Please try a different PDF.');
+            }
+
+            this.logger.log(`Extracted ${textContent.length} characters. Sending to AI for parsing...`);
+
+            // Limit text content to avoid token limits if it's a huge PDF
+            const truncatedText = textContent.slice(0, 15000);
+            const parsedJson = await this.ai.parseResume(truncatedText);
 
             if (!parsedJson) {
-                throw new Error('AI failed to parse resume content');
+                this.logger.error('AI returned null for resume parsing');
+                throw new Error('AI was unable to parse your resume structure. Please try a more standard format.');
             }
 
             this.logger.log(`Successfully parsed resume for user ${userId}`);
 
-            return this.prisma.resume.create({
+            return await this.prisma.resume.create({
                 data: {
                     userId,
                     originalFilePath: originalName,
@@ -46,7 +56,7 @@ export class UserService {
                 }
             });
         } catch (error) {
-            this.logger.error(`Failed to process resume: ${error.message}`, error.stack);
+            this.logger.error(`Resume processing failed: ${error.message}`);
             throw error;
         }
     }

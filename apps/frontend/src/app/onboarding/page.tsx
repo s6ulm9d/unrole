@@ -41,9 +41,10 @@ export default function Onboarding() {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setStep(2);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert('Failed to process resume');
+            const message = err.response?.data?.message || 'Failed to process resume. Please ensure it is a valid PDF and try again.';
+            alert(message);
         } finally {
             setLoading(false);
         }

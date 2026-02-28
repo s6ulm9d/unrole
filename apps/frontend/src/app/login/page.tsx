@@ -22,9 +22,10 @@ export default function Login() {
             const res = await axios.post(`${API_URL}/auth/login`, { email, password });
             localStorage.setItem('user', JSON.stringify(res.data));
             router.push('/onboarding');
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert('Login failed: Invalid email or password');
+            const message = err.response?.data?.message || 'Login failed: Invalid email or password';
+            alert(message);
         } finally {
             setLoading(false);
         }

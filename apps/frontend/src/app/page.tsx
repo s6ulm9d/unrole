@@ -67,7 +67,7 @@ export default function Home() {
             className="flex flex-col sm:flex-row gap-4 justify-center pt-8"
           >
             <Link
-              href="/login"
+              href="/signup"
               className="group bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-2xl shadow-indigo-600/20"
             >
               Get Started for Free

@@ -47,21 +47,31 @@ export class AIEngine {
   }
 
   async parseResume(text: string) {
+    if (!text || text.trim().length < 10) {
+      console.error('AI parseResume: Text content is too short');
+      return null;
+    }
+
     try {
+      // Truncate to avoid context window issues with very large PDFs
+      const safeText = text.slice(0, 15000);
+
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: 'You are an advanced resume parser. Extract the following information from the provided resume text: name, email, skills, experience (including company, role, duration, and bullet points), and education. Ensure the data is structured correctly and all fields are populated as accurately as possible.'
+            content: 'You are an advanced resume parser. Extract the following information from the provided resume text: name, email, skills, experience (including company, role, duration, and bullet points), and education. Structure precisely as JSON. If a field is missing, provide an empty array/null but do not hallucinate.'
           },
-          { role: 'user', content: `RESUME TEXT:\n\n${text}` }
+          { role: 'user', content: `RESUME TEXT:\n\n${safeText}` }
         ],
         response_format: zodResponseFormat(ResumeSchema, 'resume')
       });
-      return this.cleanAndParse(response.choices[0].message.content);
+
+      const content = response.choices[0].message.content;
+      return this.cleanAndParse(content);
     } catch (error) {
-      console.error('Error in parseResume:', error);
+      console.error('Error in AI parseResume:', error);
       return null;
     }
   }
