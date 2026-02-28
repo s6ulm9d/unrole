@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { AIEngine } from '@unrole/ai';
 import { ApplicationStatus } from '@unrole/db';
-const pdfParser = require('pdf-parse');
+import pdf from 'pdf-parse';
 
 @Injectable()
 export class UserService {
@@ -23,7 +23,7 @@ export class UserService {
             let textContent = '';
             try {
                 // @ts-ignore
-                const data = await pdfParser(file);
+                const data = await pdf(file);
                 textContent = data.text;
             } catch (pdfError) {
                 this.logger.error(`PDF Extraction failed: ${pdfError.message}`);
