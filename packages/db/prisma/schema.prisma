@@ -1,0 +1,142 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum ApplicationStatus {
+  QUEUED
+  APPLIED
+  FAILED
+  RESPONDED
+  INTERVIEW
+  REJECTED
+}
+
+enum EmailClassification {
+  INTERVIEW
+  ASSESSMENT
+  REJECTION
+  OTHER
+}
+
+model User {
+  id                String            @id @default(cuid())
+  name              String?
+  email             String            @unique
+  passwordHash      String
+  subscriptionPlan  SubscriptionPlan  @default(FREE)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  linkedAccounts    LinkedAccount[]
+  resumes           Resume[]
+  resumeVariants    ResumeVariant[]
+  jobPreferences    JobPreference?
+  applications      Application[]
+  emailMessages     EmailMessage[]
+  analytics         AnalyticsSnapshot[]
+}
+
+model LinkedAccount {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+  platform          String    @default("LinkedIn")
+  sessionEncrypted  String    @db.Text
+  lastAuthenticated DateTime?
+  status            String    @default("ACTIVE")
+  createdAt         DateTime  @default(now())
+}
+
+model Resume {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  originalFilePath String
+  parsedJson       Json?
+  createdAt        DateTime @default(now())
+}
+
+model ResumeVariant {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  jobId               String
+  job                 Job      @relation(fields: [jobId], references: [id])
+  generatedResumeJson Json
+  generatedPdfPath    String?
+  createdAt           DateTime @default(now())
+}
+
+model JobPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  keywords         String[]
+  locations        String[]
+  experienceLevel  String[]
+  remotePreference Boolean?
+  salaryRange      String?
+  createdAt        DateTime @default(now())
+}
+
+model Job {
+  id             String          @id @default(cuid())
+  platform       String          @default("LinkedIn")
+  externalJobId  String          @unique
+  title          String
+  company        String
+  description    String          @db.Text
+  location       String
+  url            String
+  parsedSkills   String[]
+  createdAt      DateTime        @default(now())
+  variants       ResumeVariant[]
+  applications   Application[]
+}
+
+model Application {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id])
+  jobId       String
+  job         Job               @relation(fields: [jobId], references: [id])
+  status      ApplicationStatus @default(QUEUED)
+  matchScore  Float?
+  appliedAt   DateTime?
+  logs        Json?
+  createdAt   DateTime          @default(now())
+}
+
+model EmailMessage {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id])
+  subject        String
+  sender         String
+  snippet        String?             @db.Text
+  classification EmailClassification @default(OTHER)
+  receivedAt     DateTime
+  createdAt      DateTime            @default(now())
+}
+
+model AnalyticsSnapshot {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  totalApplied  Int      @default(0)
+  interviews    Int      @default(0)
+  rejections    Int      @default(0)
+  responseRate  Float    @default(0)
+  snapshotDate  DateTime @default(now())
+}

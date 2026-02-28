@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+out
+build
+.git
+.turbo
+*.log
+.env
+.env.*
+docker-compose.yml
+Dockerfile
+.vscode
+.idea
+vendor
+coverage
+.npm
