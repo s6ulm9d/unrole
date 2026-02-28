@@ -4,7 +4,8 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { AIEngine } from '@unrole/ai';
 import { ApplicationStatus } from '@unrole/db';
-const pdfParse = require('pdf-parse');
+const rawPdfParser = require('pdf-parse');
+const pdfParse = rawPdfParser.default || rawPdfParser;
 
 @Injectable()
 export class UserService {
@@ -23,7 +24,13 @@ export class UserService {
             let textContent = '';
             try {
                 // @ts-ignore
-                const data = await pdfParse(file);
+                let parsePdf: any = rawPdfParser;
+                if (typeof rawPdfParser === 'object' && typeof rawPdfParser.PDFParse === 'function') {
+                    parsePdf = rawPdfParser.PDFParse;
+                } else if (rawPdfParser && typeof rawPdfParser.default === 'function') {
+                    parsePdf = rawPdfParser.default;
+                }
+                const data = await parsePdf(file);
                 textContent = data.text;
             } catch (pdfError) {
                 this.logger.error(`PDF Extraction failed: ${pdfError.message}`);
