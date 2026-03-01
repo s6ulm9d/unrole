@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
+import { ResumeParser } from './resume-parser';
 
 const ResumeSchema = z.object({
   name: z.string(),
@@ -46,10 +47,15 @@ export class AIEngine {
     }
   }
 
-  async parseResume(text: string) {
+  async parseResume(text: string, useAI = true) {
     if (!text || text.trim().length < 10) {
       console.error('AI parseResume: Text content is too short');
       return null;
+    }
+
+    if (!useAI) {
+      console.log('Skipping AI. Using rule-based parser as requested.');
+      return ResumeParser.parse(text);
     }
 
     try {
@@ -57,6 +63,7 @@ export class AIEngine {
       const safeText = text.slice(0, 15000);
 
       const response = await this.openai.chat.completions.create({
+        // ... same as before
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -66,37 +73,69 @@ export class AIEngine {
           { role: 'user', content: `RESUME TEXT:\n\n${safeText}` }
         ],
         response_format: zodResponseFormat(ResumeSchema, 'resume')
+      }).catch(err => {
+        // Fallback to non-AI parser if AI fails (quota, etc.)
+        console.warn('AI Parsing failed, falling back to rule-based parser:', err.message);
+        return null;
       });
+
+      if (!response) {
+        return ResumeParser.parse(text);
+      }
 
       const content = response.choices[0].message.content;
       return this.cleanAndParse(content);
     } catch (error) {
-      console.error('Error in AI parseResume:', error);
-      return null;
+      console.error('Error in AI parseResume, falling back:', error);
+      return ResumeParser.parse(text);
     }
   }
 
   async scoreJob(resumeJson: any, jobDescription: string) {
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'Score the candidate match for the job description. Provide a score from 0-100.' },
-        { role: 'user', content: `Resume: ${JSON.stringify(resumeJson)}\n\nJob Description: ${jobDescription}` }
-      ],
-      response_format: zodResponseFormat(ScoringSchema, 'scoring')
-    });
-    return this.cleanAndParse(response.choices[0].message.content);
+    try {
+      if (!this.openai.apiKey) {
+        return {
+          score: 50,
+          reasoning: 'AI matching is disabled/unavailable.',
+          matchingSkills: [],
+          missingSkills: []
+        };
+      }
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Score the candidate match for the job description. Provide a score from 0-100.' },
+          { role: 'user', content: `Resume: ${JSON.stringify(resumeJson)}\n\nJob Description: ${jobDescription}` }
+        ],
+        response_format: zodResponseFormat(ScoringSchema, 'scoring')
+      });
+      return this.cleanAndParse(response.choices[0].message.content);
+    } catch (error) {
+      console.error('Error in AI scoreJob:', error);
+      return {
+        score: 0,
+        reasoning: 'Failed to score with AI: ' + error.message,
+        matchingSkills: [],
+        missingSkills: []
+      };
+    }
   }
 
   async tailorResume(resumeJson: any, jobDescription: string) {
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'Rewrite the resume bullets to better match the job description while staying factually accurate. Do not add fake skills.' },
-        { role: 'user', content: `Resume: ${JSON.stringify(resumeJson)}\n\nJob Description: ${jobDescription}` }
-      ],
-      response_format: zodResponseFormat(ResumeSchema, 'tailored_resume')
-    });
-    return this.cleanAndParse(response.choices[0].message.content);
+    try {
+      if (!this.openai.apiKey) return resumeJson;
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Rewrite the resume bullets to better match the job description while staying factually accurate. Do not add fake skills.' },
+          { role: 'user', content: `Resume: ${JSON.stringify(resumeJson)}\n\nJob Description: ${jobDescription}` }
+        ],
+        response_format: zodResponseFormat(ResumeSchema, 'tailored_resume')
+      });
+      return this.cleanAndParse(response.choices[0].message.content);
+    } catch (error) {
+      console.error('Error in AI tailorResume:', error);
+      return resumeJson;
+    }
   }
 }

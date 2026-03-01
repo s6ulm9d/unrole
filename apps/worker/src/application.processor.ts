@@ -21,10 +21,53 @@ export class ApplicationProcessor extends WorkerHost {
     }
 
     async process(job: Job<any, any, string>): Promise<any> {
-        const { userId, keywords, location } = job.data;
+        this.logger.log(`Processing job ${job.name} (${job.id})`);
+        const { userId } = job.data;
+        let { keywords, location } = job.data;
+
+        if (!userId) {
+            this.logger.error('No userId provided in job data');
+            return;
+        }
+
+        // 0. Fetch user with latest resume and job preferences
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                resumes: { orderBy: { createdAt: 'desc' }, take: 1 },
+                jobPreferences: true
+            }
+        });
+
+        if (!user) {
+            this.logger.error(`User ${userId} not found`);
+            return;
+        }
+
+        // Use preferences if not in job data
+        if (!keywords && user.jobPreferences?.keywords?.length) {
+            keywords = user.jobPreferences.keywords.join(' ');
+        }
+        if (!location && user.jobPreferences?.locations?.length) {
+            location = user.jobPreferences.locations[0];
+        }
+
+        if (!keywords) {
+            this.logger.warn(`No keywords found for user ${userId}. Skipping job discovery.`);
+            return;
+        }
+
+        this.logger.log(`Searching for jobs: "${keywords}" in "${location || 'Remote'}"`);
 
         // 1. Fetch potential jobs
-        const jobs = await this.scraper.searchJobs(keywords, location);
+        const jobs = await this.scraper.searchJobs(keywords, location || 'Remote');
+
+        if (!jobs.length) {
+            this.logger.log('No new jobs found');
+            return;
+        }
+
+        this.logger.log(`Found ${jobs.length} potential jobs. Analyzing...`);
 
         for (const jobData of jobs) {
             // 2. Check if already applied
@@ -36,12 +79,11 @@ export class ApplicationProcessor extends WorkerHost {
 
             // 3. Get details and Score
             const details = await this.scraper.getJobDetails(jobData.url);
-            const user = await this.prisma.user.findUnique({
-                where: { id: userId },
-                include: { resumes: { orderBy: { createdAt: 'desc' }, take: 1 } }
-            });
 
-            if (!user?.resumes[0]?.parsedJson) continue;
+            if (!user?.resumes[0]?.parsedJson) {
+                this.logger.warn(`No parsed resume found for user ${userId}. Skipping job match.`);
+                continue;
+            }
 
             const scoring = await this.ai.scoreJob(user.resumes[0].parsedJson, details.description);
             if (!scoring) {

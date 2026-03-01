@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,15 +48,15 @@ export class UserService {
                 throw new Error('Resume content is too short or could not be read. Please try a different PDF.');
             }
 
-            this.logger.log(`Extracted ${textContent.length} characters. Sending to AI for parsing...`);
+            this.logger.log(`Extracted ${textContent.length} characters. Parsing without AI...`);
 
-            // Limit text content to avoid token limits if it's a huge PDF
-            const truncatedText = textContent.slice(0, 15000);
-            const parsedJson = await this.ai.parseResume(truncatedText);
+            // Limit text content to avoid processing huge strings
+            const truncatedText = textContent.slice(0, 20000);
+            const parsedJson = await this.ai.parseResume(truncatedText, false);
 
             if (!parsedJson) {
-                this.logger.error('AI returned null for resume parsing');
-                throw new Error('AI was unable to parse your resume structure. Please try a more standard format.');
+                this.logger.error('Parser returned null for resume');
+                throw new Error('Unable to parse your resume structure. Please try a more standard format.');
             }
 
             this.logger.log(`Successfully parsed resume for user ${userId}`);
@@ -70,7 +70,14 @@ export class UserService {
             });
         } catch (error) {
             this.logger.error(`Resume processing failed: ${error.message}`);
-            throw error;
+            // Catch quota/key errors specifically
+            if (error.message.includes('quota')) {
+                throw new BadRequestException('OpenAI Quota exceeded. Please check your billing or use a different key.');
+            }
+            if (error.message.includes('API key')) {
+                throw new BadRequestException('Invalid AI API key setup. Please contact support.');
+            }
+            throw new BadRequestException(`Resume extraction failed: ${error.message}`);
         }
     }
 
